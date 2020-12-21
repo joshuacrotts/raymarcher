@@ -1,13 +1,17 @@
 package com.joshuacrotts.raymarcher.main;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
-import java.awt.event.KeyEvent;
+import java.awt.Shape;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 
+import com.joshuacrotts.raymarcher.commands.ChangePositionCommand;
+import com.joshuacrotts.raymarcher.commands.DecreaseAngleCommand;
+import com.joshuacrotts.raymarcher.commands.IncreaseAngleCommand;
 import com.theta.graphic.ThetaGraphics;
-import com.theta.input.Command;
 import com.theta.model.Vec2;
 import com.theta.platform.ThetaGraphicalApplication;
 import com.theta.util.ThetaUtils;
@@ -15,49 +19,68 @@ import com.theta.util.ThetaUtils;
 public class Raymarcher extends ThetaGraphicalApplication {
 
   /**
-   * 
+   * Width of the frame.
    */
   private static final int WIDTH = 600;
-  
+
   /**
-   * 
+   * Height of the frame.
    */
   private static final int HEIGHT = 600;
 
   /**
-   * 
+   * Stroke for all other graphical elements for consistency. We instantiate them
+   * here so we don't have to continuously generate them in the render loop.
    */
-  private ArrayList<Ellipse2D.Double> ellipses;
+  private static final BasicStroke THIN_STROKE = new BasicStroke(1);
 
   /**
-   * 
+   * Stroke of the ray march circles that are generated so they show up better.
+   */
+  private static final BasicStroke THICK_STROKE = new BasicStroke(2);
+
+  /**
+   * Array of shapes generated in the scene.
+   */
+  private ArrayList<Shape> boundaries;
+
+  /**
+   * Current vertex that we start marching from. This changes overtime and is
+   * always reset.
    */
   private Vec2 currentVertex;
 
   /**
-   * 
+   * Change position command - uses the mouse to readjust where we start the
+   * march.
    */
-  private IncAngCmd inc;
-  
+  private ChangePositionCommand changePosCmd;
+
   /**
-   * 
+   * COmmand to increase the angle by one degree. Turns the ray clockwise.
    */
-  private DecAngCmd dec;
-  
+  private IncreaseAngleCommand incCmd;
+
   /**
-   * 
+   * COmmand to decrease the angle by one degree. Turns the ray counterclockwise.
+   */
+  private DecreaseAngleCommand decCmd;
+
+  /**
+   * Keeps track of the current angle.
    */
   private double angle = 0;
 
   public Raymarcher() {
     super(WIDTH, HEIGHT, "Raymarcher");
 
-    this.ellipses = new ArrayList<>();
+    this.boundaries = new ArrayList<>();
     this.currentVertex = new Vec2(400d, 400d);
-    this.generateEllipses(15);
+    this.generateBoundaries(15);
 
-    this.inc = new IncAngCmd(this);
-    this.dec = new DecAngCmd(this);
+    this.incCmd = new IncreaseAngleCommand(this);
+    this.decCmd = new DecreaseAngleCommand(this);
+    this.changePosCmd = new ChangePositionCommand(this);
 
     this.startGame();
   }
@@ -69,43 +92,61 @@ public class Raymarcher extends ThetaGraphicalApplication {
   @Override
   public void render() {
     // Draws the ellipses/boundaries.
-    for (Ellipse2D.Double e : this.ellipses) {
-      double ex = e.getCenterX();
-      double ey = e.getCenterY();
-      double er = e.getWidth();
-      ThetaGraphics.ellipse(ex, ey, er, er, Color.RED, true);
+    for (Shape b : this.boundaries) {
+      double ex = b.getBounds2D().getCenterX();
+      double ey = b.getBounds2D().getCenterY();
+      double er = b.getBounds2D().getWidth();
+      if (b instanceof Ellipse2D.Double) {
+        ThetaGraphics.ellipse(ex, ey, er, er, Color.RED, true);
+      } else {
+        ThetaGraphics.rect(ex, ey, er, er, Color.GREEN, true, 0);
+      }
     }
 
     ArrayList<March> marches = this.march();
 
     // Draw each step of the march.
     for (March m : marches) {
-      ThetaGraphics.ellipse(m.circle.getCenterX(), m.circle.getCenterY(), m.dist, m.dist, Color.BLUE, false);
+      ThetaGraphics.GFXContext.setStroke(new BasicStroke(2));
+      ThetaGraphics.ellipse(m.getCircle().getCenterX(), m.getCircle().getCenterY(), m.getDist(), m.getDist(),
+          Color.BLUE, false);
+      ThetaGraphics.GFXContext.setStroke(new BasicStroke(1));
       ThetaGraphics.GFXContext.setColor(Color.YELLOW);
-      ThetaGraphics.GFXContext.draw(m.ray);
+      ThetaGraphics.GFXContext.draw(m.getRay());
     }
 
     // We want to highlight the last march.
     if (!marches.isEmpty()) {
       March lastMarch = marches.get(marches.size() - 1);
-      ThetaGraphics.ellipse(lastMarch.ray.x2, lastMarch.ray.y2, 5, 5, Color.GREEN, true);
-    }
-  }
-  
-  /**
-   * 
-   * @param n
-   */
-  private void generateEllipses(int n) {
-    for (int i = 0; i < n; i++) {
-      double x = ThetaUtils.randomDouble(100, 500);
-      double y = ThetaUtils.randomDouble(100, 500);
-      double r = ThetaUtils.randomDouble(10, 25);
-      this.ellipses.add(new Ellipse2D.Double(x, y, r, r));
+      ThetaGraphics.ellipse(lastMarch.getRay().x2, lastMarch.getRay().y2, 4, 4, ThetaGraphics.DARK_ORANGE, true);
     }
   }
 
   /**
+   * 
+   * @param n
+   */
+  private void generateBoundaries(int n) {
+    for (int i = 0; i < n; i++) {
+      double x = ThetaUtils.randomDouble(100, 500);
+      double y = ThetaUtils.randomDouble(100, 500);
+
+      if (ThetaUtils.randomDouble() < 0.5) {
+        double r = ThetaUtils.randomDouble(10, 25);
+        this.boundaries.add(new Rectangle2D.Double(x, y, r, r));
+      } else {
+        double r = ThetaUtils.randomDouble(10, 25);
+        this.boundaries.add(new Ellipse2D.Double(x, y, r, r));
+      }
+    }
+  }
+
+  /**
+   * Generates the steps necessary to complete one march cycle. A march first finds the 
+   * closest object in the scene. We then generate a circle with a radius of that length 
+   * which extends out to that object. Then, the current vertex is reassigned to the end of
+   * this generated ray. This process is repeated until we either "hit" an object/boundary, or 
+   * we exceed the bounds of the screen. 
    * 
    * @return
    */
@@ -118,10 +159,15 @@ public class Raymarcher extends ThetaGraphicalApplication {
       double dist = Integer.MAX_VALUE;
 
       // Finds the minimum ray.
-      for (Ellipse2D.Double e : this.ellipses) {
-        double ex = e.getCenterX();
-        double ey = e.getCenterY();
-        double er = e.getWidth();
+      for (Shape b : this.boundaries) {
+        double ex = b.getBounds2D().getCenterX();
+        double ey = b.getBounds2D().getCenterY();
+        double er = b.getBounds2D().getWidth();
+
+        if (b instanceof Rectangle2D.Double) {
+          er /= 2;
+        }
+
         dist = Math.min(dist, RaymarcherUtils.signedDistToCircle(this.currentVertex, new Vec2(ex, ey), er));
       }
 
@@ -131,7 +177,7 @@ public class Raymarcher extends ThetaGraphicalApplication {
         break;
       }
 
-      // Generate the ray circle.
+      // Generate the ray circle (we want to offset it by the diameter).
       Ellipse2D.Double currCircle = new Ellipse2D.Double(this.currentVertex.getX() - dist / 2,
           this.currentVertex.getY() - dist / 2, dist, dist);
 
@@ -152,56 +198,19 @@ public class Raymarcher extends ThetaGraphicalApplication {
     return rayMarchSteps;
   }
 
-  private class March {
-
-    private Ellipse2D.Double circle;
-    private Line2D.Double ray;
-    private double dist;
-
-    public March(Ellipse2D.Double e, Line2D.Double ray, double dist) {
-      this.circle = e;
-      this.dist = dist;
-      this.ray = ray;
-    }
+  public Vec2 getCurrentVertex() {
+    return currentVertex;
   }
 
-  private class IncAngCmd extends Command {
-    
-    private Raymarcher rm;
-
-    public IncAngCmd(Raymarcher rm) {
-      this.rm = rm;
-      this.bind(rm.getKeyboard(), KeyEvent.VK_D);
-    }
-
-    @Override
-    public void pressed(float dt) {
-      this.rm.angle++;
-    }
-
-    @Override
-    public void down(float dt) {
-      this.rm.angle++;
-    }
+  public void setCurrentVertex(Vec2 currentVertex) {
+    this.currentVertex = currentVertex;
   }
 
-  private class DecAngCmd extends Command {
-    
-    private Raymarcher rm;
+  public double getAngle() {
+    return angle;
+  }
 
-    public DecAngCmd(Raymarcher rm) {
-      this.rm = rm;
-      this.bind(rm.getKeyboard(), KeyEvent.VK_A);
-    }
-
-    @Override
-    public void pressed(float dt) {
-      this.rm.angle = (this.rm.angle - 1 + 360 % 360);
-    }
-
-    @Override
-    public void down(float dt) {
-      this.rm.angle = (this.rm.angle - 1 + 360 % 360);
-    }
+  public void setAngle(double angle) {
+    this.angle = angle;
   }
 }
